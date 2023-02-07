@@ -28,7 +28,7 @@ docker run --rm -v ${HOME}/.aws:/root/.aws:ro ghcr.io/novalagung/aws-cloudflare-
 ```
 
 - `security-group-id` is the AWS security group ID.
-- `ports` is the port that will be whitelisted. default is set to `80` (HTTP port). Specify the port using comma separated or space separated.
+- `ports` is the port that will be whitelisted. Default is set to `80` (HTTP port). Specify the port using comma separated or space separated.
 
 ```bash
 docker run --rm -v ${HOME}/.aws:/root/.aws:ro ghcr.io/novalagung/aws-cloudflare-ip-whitelist:latest sg-0cff43a33f085df79
