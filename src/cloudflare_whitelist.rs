@@ -1,15 +1,15 @@
 use aws_sdk_ec2::{Client};
 use aws_sdk_ec2::model::{Filter, Ipv6Range, IpRange};
 
-pub async fn run(security_group_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run(security_group_id: &str, ports: &Vec<i32>) -> Result<(), Box<dyn std::error::Error>> {
     let shared_config = aws_config::load_from_env().await;
     let client = Client::new(&shared_config);
 
-    // ============== get old security groups ==============
+    // ============== get current security groups ==============
     
-    println!("getting old security group rules (security_group_id: {security_group_id:?})");
+    println!("getting current security group rules");
 
-    let mut old_ingress_ids: Vec<String> = Vec::new();
+    let mut current_ingress_ids: Vec<String> = Vec::new();
     
     let security_group_filter = Filter::builder()
         .set_name(Some("group-id".to_string()))
@@ -29,19 +29,19 @@ pub async fn run(security_group_id: &str) -> Result<(), Box<dyn std::error::Erro
         if group_id.len() == 0 {
             continue
         }
-        old_ingress_ids.push(group_id);
+        current_ingress_ids.push(group_id);
     }
 
     println!("   => done");
 
     // ============== remove ingress rules ==============
 
-    if old_ingress_ids.len() > 0 {
-        println!("remove old ingress rules (ingress_ids: {old_ingress_ids:?})");
+    if current_ingress_ids.len() > 0 {
+        println!("remove current ingress rules (ingress_ids: {current_ingress_ids:?})");
         
         let resp = client.revoke_security_group_ingress()
             .set_group_id(Some(security_group_id.to_string()))
-            .set_security_group_rule_ids(Some(old_ingress_ids))
+            .set_security_group_rule_ids(Some(current_ingress_ids))
             .send()
             .await?;
     
@@ -70,33 +70,35 @@ pub async fn run(security_group_id: &str) -> Result<(), Box<dyn std::error::Erro
         println!("   => done ({})", ip_list);
     }
 
-    // ============== remove ingress rules ==============
+    // ============== add ingress rules ==============
 
     println!("add new security group rules");
 
     for ip in ips {
-        let mut ip_permission = aws_sdk_ec2::model::IpPermission::builder()
-            .set_ip_protocol(Some("tcp".to_string()))
-            .set_from_port(Some(80))
-            .set_to_port(Some(80));
-
-        if ip.contains("::") {
-            ip_permission = ip_permission.set_ipv6_ranges(Some(vec![
-                Ipv6Range::builder().set_cidr_ipv6(Some(ip.to_string())).build()
-            ]))
-        } else {
-            ip_permission = ip_permission.set_ip_ranges(Some(vec![
-                IpRange::builder().set_cidr_ip(Some(ip.to_string())).build()
-            ]))
-        }
-        
-        let resp = client.authorize_security_group_ingress()
-            .set_group_id(Some(security_group_id.to_string()))
-            .set_ip_permissions(Some(vec![ip_permission.build()]))
-            .send()
-            .await?;
+        for port in ports {
+            let mut ip_permission = aws_sdk_ec2::model::IpPermission::builder()
+                .set_ip_protocol(Some("tcp".to_string()))
+                .set_from_port(Some(*port))
+                .set_to_port(Some(*port));
     
-        println!("   => done ({} {})", ip, resp.r#return().unwrap_or_default());
+            if ip.contains("::") {
+                ip_permission = ip_permission.set_ipv6_ranges(Some(vec![
+                    Ipv6Range::builder().set_cidr_ipv6(Some(ip.to_string())).build()
+                ]))
+            } else {
+                ip_permission = ip_permission.set_ip_ranges(Some(vec![
+                    IpRange::builder().set_cidr_ip(Some(ip.to_string())).build()
+                ]))
+            }
+            
+            let resp = client.authorize_security_group_ingress()
+                .set_group_id(Some(security_group_id.to_string()))
+                .set_ip_permissions(Some(vec![ip_permission.build()]))
+                .send()
+                .await?;
+        
+            println!("   => done ({} {} {})", ip, *port, resp.r#return().unwrap_or_default());
+        }
     }
 
     Ok(())
